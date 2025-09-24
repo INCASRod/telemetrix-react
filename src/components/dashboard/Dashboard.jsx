@@ -14,7 +14,7 @@ const Dashboard = ({ user, onLogout, getAccessToken }) => {
     useEffect(() => {
         if (user && getAccessToken) {
             fetchMachineData();
-            const interval = setInterval(fetchMachineData, 13000);
+            const interval = setInterval(fetchMachineData, 10000);
             return () => clearInterval(interval);
         }
     }, [user, getAccessToken]);
