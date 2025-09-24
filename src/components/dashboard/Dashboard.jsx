@@ -14,7 +14,7 @@ const Dashboard = ({ user, onLogout, getAccessToken }) => {
             fetchMachineData();
 
             // Set up polling every 13 seconds
-            const interval = setInterval(fetchMachineData, 13000);
+            const interval = setInterval(fetchMachineData, 5000);
 
             // Cleanup interval on unmount
             return () => clearInterval(interval);
