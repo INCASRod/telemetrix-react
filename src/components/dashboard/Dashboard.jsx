@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 // react-gauge-component: Used for displaying a semicircular gauge for production efficiency visualization.
 // Version requirement: ^3.0.0 or higher is recommended for best compatibility.
 import GaugeComponent from 'react-gauge-component';
@@ -51,15 +51,19 @@ const Dashboard = ({ user, token, onLogout }) => {
                 }
 
                 const data = await response.json();
+                console.log('API Response:', data); // Debug log
+
                 setTelemetryData({
                     bagCount: data.bagCount || 0,
                     machineState: data.machineState || 'STOPPED',
-                    currentRate: data.bagsPerMinute || 0,
+                    // Fixed: Use consistent field name
+                    currentRate: data.currentRate || data.bagsPerMinute || 0,
                     shiftTime: data.shiftTime || 0
                 });
 
                 setLoading(false);
             } catch (err) {
+                console.error('API Error:', err); // Debug log
                 setError(err.message);
                 setLoading(false);
             }
