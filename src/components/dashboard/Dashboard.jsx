@@ -63,7 +63,7 @@ const Dashboard = ({ user, token, onLogout }) => {
 
                 const data = await response.json();
                 console.log('API Response:', data);
-                
+
                 setTelemetryData({
                     bagCount: data.bagCount || 0,
                     machineState: data.machineState || 'STOPPED',
@@ -90,7 +90,7 @@ const Dashboard = ({ user, token, onLogout }) => {
         const now = currentTime;
         const currentHour = now.getHours();
         const currentMinute = now.getMinutes();
-        
+
         // Check if we're within shift hours
         if (currentHour < SHIFT_START_HOUR || currentHour >= SHIFT_END_HOUR) {
             return {
@@ -105,13 +105,13 @@ const Dashboard = ({ user, token, onLogout }) => {
         // Calculate minutes into the shift
         const minutesIntoShift = (currentHour - SHIFT_START_HOUR) * 60 + currentMinute;
         const shiftProgress = Math.min((minutesIntoShift / SHIFT_DURATION_MINUTES) * 100, 100);
-        
+
         // Format time displays
         const hours = Math.floor(minutesIntoShift / 60);
         const mins = minutesIntoShift % 60;
         const seconds = now.getSeconds();
         const timeDisplay = `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-        
+
         // Calculate remaining time
         const remainingMinutes = Math.max(0, SHIFT_DURATION_MINUTES - minutesIntoShift);
         const remainingHours = Math.floor(remainingMinutes / 60);
@@ -131,15 +131,15 @@ const Dashboard = ({ user, token, onLogout }) => {
     const getMachineRunTime = () => {
         const runTimeMinutes = telemetryData.machineRunTime; // From API
         const runTimeProgress = Math.min((runTimeMinutes / SHIFT_DURATION_MINUTES) * 100, 100);
-        
+
         const hours = Math.floor(runTimeMinutes / 60);
         const mins = runTimeMinutes % 60;
         const timeDisplay = `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:00`;
-        
+
         // Calculate efficiency (machine time vs shift time)
         const shiftInfo = getShiftProgress();
-        const efficiency = shiftInfo.minutesIntoShift > 0 
-            ? (runTimeMinutes / shiftInfo.minutesIntoShift) * 100 
+        const efficiency = shiftInfo.minutesIntoShift > 0
+            ? (runTimeMinutes / shiftInfo.minutesIntoShift) * 100
             : 0;
 
         return {
@@ -154,7 +154,7 @@ const Dashboard = ({ user, token, onLogout }) => {
     const shiftInfo = getShiftProgress();
     const machineInfo = getMachineRunTime();
     const bagsProgress = Math.min((telemetryData.bagCount / TARGET_BAGS_PER_SHIFT) * 100, 100);
-    
+
     // Calculate gauge value (0-100) based on current rate vs optimal rate
     const gaugeValue = Math.min((telemetryData.currentRate / OPTIMAL_RATE) * 100, 100);
 
@@ -222,7 +222,7 @@ const Dashboard = ({ user, token, onLogout }) => {
                 {/* Main Content - Responsive Flex Grid with Equal Height Cards */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
                     {/* Left Card - Production Metrics */}
-                    <div className="bg-white rounded-lg shadow-sm p-6 h-[600px] flex flex-col">
+                    <div className="bg-white rounded-lg shadow-sm p-6 h-auto flex flex-col">
                         <div className="space-y-6 flex-1">
                             {/* Real-Time Shift Progress */}
                             <div>
@@ -243,7 +243,7 @@ const Dashboard = ({ user, token, onLogout }) => {
                                     </div>
                                 </div>
                                 <div className="w-full bg-gray-200 rounded-full h-2">
-                                    <div 
+                                    <div
                                         className="bg-blue-600 h-2 rounded-full transition-all duration-1000"
                                         style={{ width: `${shiftInfo.shiftProgress}%` }}
                                     ></div>
@@ -277,18 +277,17 @@ const Dashboard = ({ user, token, onLogout }) => {
                                 <div className="relative">
                                     {/* Background bar showing shift progress */}
                                     <div className="w-full bg-blue-200 rounded-full h-2 mb-1">
-                                        <div 
+                                        <div
                                             className="bg-blue-300 h-2 rounded-full transition-all duration-1000"
                                             style={{ width: `${shiftInfo.shiftProgress}%` }}
                                         ></div>
                                     </div>
                                     {/* Machine runtime bar */}
                                     <div className="w-full bg-gray-200 rounded-full h-2">
-                                        <div 
-                                            className={`h-2 rounded-full transition-all duration-1000 ${
-                                                machineInfo.efficiency >= 90 ? 'bg-green-600' :
-                                                machineInfo.efficiency >= 70 ? 'bg-yellow-500' : 'bg-red-500'
-                                            }`}
+                                        <div
+                                            className={`h-2 rounded-full transition-all duration-1000 ${machineInfo.efficiency >= 90 ? 'bg-green-600' :
+                                                    machineInfo.efficiency >= 70 ? 'bg-yellow-500' : 'bg-red-500'
+                                                }`}
                                             style={{ width: `${machineInfo.runTimeProgress}%` }}
                                         ></div>
                                     </div>
@@ -311,7 +310,7 @@ const Dashboard = ({ user, token, onLogout }) => {
                                     {telemetryData.bagCount.toLocaleString()}
                                 </div>
                                 <div className="w-full bg-gray-200 rounded-full h-2">
-                                    <div 
+                                    <div
                                         className="bg-blue-600 h-2 rounded-full transition-all duration-500"
                                         style={{ width: `${bagsProgress}%` }}
                                     ></div>
@@ -336,7 +335,7 @@ const Dashboard = ({ user, token, onLogout }) => {
                                         <span className="text-sm font-medium text-red-600">Below Optimal</span>
                                     </div>
                                 </div>
-                                
+
                                 <div className="flex justify-center">
                                     <div style={{ width: '280px', height: '200px' }}>
                                         <GaugeComponent
@@ -418,7 +417,7 @@ const Dashboard = ({ user, token, onLogout }) => {
                     </div>
 
                     {/* Right Card - Weekly Trends */}
-                    <div className="bg-white rounded-lg shadow-sm p-6 h-[600px] flex flex-col">
+                    <div className="bg-white rounded-lg shadow-sm p-6 h-auto flex flex-col">
                         <div className="flex justify-between items-center mb-6">
                             <h2 className="text-xl font-semibold text-gray-900" style={{ fontFamily: 'Outfit, sans-serif' }}>
                                 Weekly Trends
@@ -439,13 +438,13 @@ const Dashboard = ({ user, token, onLogout }) => {
                             <ResponsiveContainer width="100%" height="100%">
                                 <LineChart data={weeklyData} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
                                     <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                                    <XAxis 
-                                        dataKey="day" 
+                                    <XAxis
+                                        dataKey="day"
                                         tick={{ fontSize: 12, fill: '#6b7280' }}
                                         axisLine={{ stroke: '#e5e7eb' }}
                                         tickLine={{ stroke: '#e5e7eb' }}
                                     />
-                                    <YAxis 
+                                    <YAxis
                                         tick={{ fontSize: 12, fill: '#6b7280' }}
                                         axisLine={{ stroke: '#e5e7eb' }}
                                         tickLine={{ stroke: '#e5e7eb' }}
@@ -460,7 +459,7 @@ const Dashboard = ({ user, token, onLogout }) => {
                                             fontSize: '12px'
                                         }}
                                         formatter={(value, name) => [
-                                            `${value.toLocaleString()} bags`, 
+                                            `${value.toLocaleString()} bags`,
                                             name === 'expected' ? 'Expected Target' : 'Actual'
                                         ]}
                                     />
