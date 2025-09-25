@@ -1,8 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
+// react-gauge-component: Used for displaying a semicircular gauge for production efficiency visualization.
+// Version requirement: ^3.0.0 or higher is recommended for best compatibility.
 import GaugeComponent from 'react-gauge-component';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 const Dashboard = ({ user, token, onLogout }) => {
+    // 'token' is now received directly as a prop, not via getAccessToken()
     const [telemetryData, setTelemetryData] = useState({
         bagCount: 0,
         machineState: 'STOPPED',
@@ -31,6 +34,7 @@ const Dashboard = ({ user, token, onLogout }) => {
     useEffect(() => {
         const fetchData = async () => {
             try {
+                // Use the direct 'token' prop for authentication
                 const response = await fetch(`/api/GetCurrentStatus`, {
                     headers: {
                         'Authorization': `Bearer ${token}`,
@@ -50,7 +54,7 @@ const Dashboard = ({ user, token, onLogout }) => {
                 setTelemetryData({
                     bagCount: data.bagCount || 0,
                     machineState: data.machineState || 'STOPPED',
-                    currentRate: data.currentRate || 0,
+                    currentRate: data.bagsPerMinute || 0,
                     shiftTime: data.shiftTime || 0
                 });
 
