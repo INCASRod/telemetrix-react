@@ -16,7 +16,19 @@ const Dashboard = ({ user, onLogout, getAccessToken }) => {
 
     const API_BASE = 'https://incas-functions-dev-b8djeyakc7d0hwa3.australiasoutheast-01.azurewebsites.net/api';
 
-    // Fetch current telemetry data
+    useEffect(() => {
+        if (user && getAccessToken) {
+            // Initial data fetch
+            fetchMachineData();
+
+            // Set up polling every 13 seconds
+            const interval = setInterval(fetchMachineData, 13000);
+
+            // Cleanup interval on unmount
+            return () => clearInterval(interval);
+        }
+    }, [user, getAccessToken]);
+
     const fetchMachineData = async () => {
         if (!getAccessToken) return;
 
