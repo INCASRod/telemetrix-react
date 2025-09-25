@@ -79,10 +79,9 @@ const Dashboard = ({ user, token, onLogout }) => {
             }
         };
 
-        // Uncomment for real API calls
-        // fetchData();
-        // const interval = setInterval(fetchData, 5000);
-        // return () => clearInterval(interval);
+        fetchData();
+        const interval = setInterval(fetchData, 5000);
+        return () => clearInterval(interval);
     }, [token, onLogout]);
 
     // Calculate real-time shift progress
@@ -286,7 +285,7 @@ const Dashboard = ({ user, token, onLogout }) => {
                                     <div className="w-full bg-gray-200 rounded-full h-2">
                                         <div
                                             className={`h-2 rounded-full transition-all duration-1000 ${machineInfo.efficiency >= 90 ? 'bg-green-600' :
-                                                    machineInfo.efficiency >= 70 ? 'bg-yellow-500' : 'bg-red-500'
+                                                machineInfo.efficiency >= 70 ? 'bg-yellow-500' : 'bg-red-500'
                                                 }`}
                                             style={{ width: `${machineInfo.runTimeProgress}%` }}
                                         ></div>
@@ -399,19 +398,23 @@ const Dashboard = ({ user, token, onLogout }) => {
 
                                 {/* Status Buttons */}
                                 <div className="flex justify-center gap-3 mt-4">
-                                    <button className="flex items-center gap-2 px-3 py-2 bg-green-500 text-white rounded-md text-sm">
-                                        <div className="w-2 h-2 bg-white rounded-full"></div>
+                                    <button className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm ${telemetryData.machineState === 'RUNNING'
+                                            ? 'bg-green-500 text-white'
+                                            : 'bg-gray-200 text-gray-600'
+                                        }`}>
+                                        <div className={`w-2 h-2 rounded-full ${telemetryData.machineState === 'RUNNING' ? 'bg-white' : 'bg-gray-500'
+                                            }`}></div>
                                         Running
                                     </button>
-                                    <button className="flex items-center gap-2 px-3 py-2 bg-gray-200 text-gray-600 rounded-md text-sm">
-                                        <div className="w-2 h-2 bg-gray-500 rounded-full"></div>
+
+                                    <button className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm ${telemetryData.machineState === 'PAUSED'
+                                            ? 'bg-blue-500 text-white'
+                                            : 'bg-gray-200 text-gray-600'
+                                        }`}>
+                                        <div className={`w-2 h-2 rounded-full ${telemetryData.machineState === 'PAUSED' ? 'bg-white' : 'bg-gray-500'
+                                            }`}></div>
                                         Paused
-                                    </button>
-                                    <button className="flex items-center gap-2 px-3 py-2 bg-gray-200 text-gray-600 rounded-md text-sm">
-                                        <div className="w-2 h-2 bg-gray-500 rounded-full"></div>
-                                        Stopped
-                                    </button>
-                                </div>
+                                    </button>                                </div>
                             </div>
                         </div>
                     </div>
