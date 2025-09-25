@@ -1,448 +1,369 @@
 import React, { useState, useEffect } from 'react';
-import { LineChart, Line, XAxis, YAxis, ResponsiveContainer } from 'recharts';
-import { Play, Pause, Square, LogOut, BarChart3, Settings, FileText, HeadphonesIcon } from 'lucide-react';
+import GaugeComponent from 'react-gauge-component';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
-const Dashboard = ({ user, onLogout, getAccessToken }) => {
-    // Machine data from Azure APIs
-    const [machineData, setMachineData] = useState({});
-    const [historicalData, setHistoricalData] = useState([]);
-    const [productionHistory, setProductionHistory] = useState([]);
-    const [lastUpdate, setLastUpdate] = useState(null);
-    const [error, setError] = useState(null);
+const Dashboard = ({ user, token, onLogout }) => {
+    const [telemetryData, setTelemetryData] = useState({
+        bagCount: 0,
+        machineState: 'STOPPED',
+        currentRate: 0,
+        shiftTime: 0
+    });
+
+    const [weeklyData, setWeeklyData] = useState([
+        { day: 'Mon', expected: 14400, actual: 13200 },
+        { day: 'Tue', expected: 14400, actual: 14100 },
+        { day: 'Wed', expected: 14400, actual: 13800 },
+        { day: 'Thu', expected: 14400, actual: 14200 },
+        { day: 'Fri', expected: 14400, actual: 13900 },
+        { day: 'Sat', expected: 14400, actual: 14000 },
+        { day: 'Sun', expected: 14400, actual: 13500 }
+    ]);
+
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
 
-    // UI state derived from real data
-    const [shiftTime, setShiftTime] = useState(0);
-
-    const API_BASE = 'https://incas-functions-dev-b8djeyakc7d0hwa3.australiasoutheast-01.azurewebsites.net/api';
+    // Constants for B&C 4080DN specifications
+    const TARGET_BAGS_PER_SHIFT = 14400; // 24 bags/min * 600 minutes (10 hours)
+    const OPTIMAL_RATE = 24; // bags per minute
+    const MAX_SHIFT_TIME = 600; // 10 hours in minutes
 
     useEffect(() => {
-        if (user && getAccessToken) {
-            // Initial data fetch
-            fetchMachineData();
+        const fetchData = async () => {
+            try {
+                const response = await fetch(`/api/GetCurrentStatus`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
 
-            // Set up polling every 13 seconds
-            const interval = setInterval(fetchMachineData, 13000);
-
-            // Cleanup interval on unmount
-            return () => clearInterval(interval);
-        }
-    }, [user, getAccessToken]);
-
-    const fetchMachineData = async () => {
-        if (!getAccessToken) return;
-
-        try {
-            const accessToken = await getAccessToken();
-
-            const response = await fetch(`${API_BASE}/GetCurrentStatus`, {
-                headers: {
-                    'Authorization': `Bearer ${accessToken}`,
-                    'Content-Type': 'application/json'
+                if (!response.ok) {
+                    if (response.status === 401) {
+                        onLogout();
+                        return;
+                    }
+                    throw new Error('Failed to fetch telemetry data');
                 }
-            });
 
-            if (response.ok) {
                 const data = await response.json();
-                setMachineData(data);
-                setLastUpdate(new Date().toLocaleTimeString());
-                setError(null);
+                setTelemetryData({
+                    bagCount: data.bagCount || 0,
+                    machineState: data.machineState || 'STOPPED',
+                    currentRate: data.currentRate || 0,
+                    shiftTime: data.shiftTime || 0
+                });
 
-                // Update production history for live chart
-                if (data.bagsPerMinute) {
-                    setProductionHistory(prev => {
-                        const newHistory = [...prev, data.bagsPerMinute];
-                        return newHistory.slice(-20); // Keep last 20 data points
-                    });
-                }
-
-            } else if (response.status === 401) {
-                setError('Session expired. Please sign in again.');
-                setTimeout(() => onLogout(), 2000);
-                return;
-            } else {
-                throw new Error(`API Error: ${response.status}`);
+                setLoading(false);
+            } catch (err) {
+                setError(err.message);
+                setLoading(false);
             }
-        } catch (err) {
-            console.error('Fetch error:', err);
-            setError(`Failed to fetch data: ${err.message}`);
-        } finally {
-            setLoading(false);
-        }
+        };
+
+        fetchData();
+        const interval = setInterval(fetchData, 5000);
+        return () => clearInterval(interval);
+    }, [token, onLogout]);
+
+    // Calculate percentages for progress bars
+    const bagsProgress = Math.min((telemetryData.bagCount / TARGET_BAGS_PER_SHIFT) * 100, 100);
+    const timeProgress = Math.min((telemetryData.shiftTime / MAX_SHIFT_TIME) * 100, 100);
+
+    // Calculate gauge value (0-100) based on current rate vs optimal rate
+    const gaugeValue = Math.min((telemetryData.currentRate / OPTIMAL_RATE) * 100, 100);
+
+    const getStatusColor = () => {
+        if (telemetryData.machineState === 'RUNNING' && telemetryData.currentRate >= OPTIMAL_RATE) return '#5BE12C';
+        if (telemetryData.machineState === 'RUNNING' && telemetryData.currentRate >= 20) return '#F5CD19';
+        return '#EA4228';
     };
 
-    // Fetch historical data for weekly trends
-    const fetchHistoricalData = async () => {
-        if (!getAccessToken) return;
-
-        try {
-            const accessToken = await getAccessToken();
-
-            const response = await fetch(`${API_BASE}/GetHistoricalData?hours=168`, { // 7 days = 168 hours
-                headers: {
-                    'Authorization': `Bearer ${accessToken}`,
-                    'Content-Type': 'application/json'
-                }
-            });
-
-            if (response.ok) {
-                const data = await response.json();
-
-                // Process historical data into daily summaries
-                const processedData = processHistoricalDataForChart(data.data || []);
-                setHistoricalData(processedData);
-            }
-        } catch (err) {
-            console.error('Historical data fetch error:', err);
-        }
-    };
-
-    // Process historical data into daily summaries for the chart
-    const processHistoricalDataForChart = (rawData) => {
-        if (!rawData || rawData.length === 0) {
-            // Return mock data if no historical data available
-            return [
-                { day: 'Mon', expected: 14400, actual: 12500 },
-                { day: 'Tue', expected: 14400, actual: 15200 },
-                { day: 'Wed', expected: 14400, actual: 13800 },
-                { day: 'Thu', expected: 14400, actual: 16100 },
-                { day: 'Fri', expected: 14400, actual: 14800 },
-                { day: 'Sat', expected: 14400, actual: 11200 },
-                { day: 'Sun', expected: 14400, actual: 13600 }
-            ];
-        }
-
-        // Group data by day and calculate daily totals
-        const dailyData = {};
-        const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-
-        rawData.forEach(item => {
-            const date = new Date(item.timestamp);
-            const dayName = days[date.getDay()];
-
-            if (!dailyData[dayName]) {
-                dailyData[dayName] = { day: dayName, expected: 14400, actual: 0, count: 0 };
-            }
-            dailyData[dayName].actual = Math.max(dailyData[dayName].actual, item.bagCount || 0);
-        });
-
-        // Return last 7 days
-        return days.slice(-7).map(day => dailyData[day] || { day, expected: 14400, actual: 0 });
-    };
-
-    // Initialize data fetch
-    useEffect(() => {
-        if (user && getAccessToken) {
-            fetchMachineData();
-            fetchHistoricalData();
-
-            // Set up polling for real-time data
-            const interval = setInterval(fetchMachineData, 13000); // Every 13 seconds
-            return () => clearInterval(interval);
-        }
-    }, [user, getAccessToken]);
-
-    // Simulate shift time based on machine running state
-    useEffect(() => {
-        if (machineData.machineState === 'RUNNING') {
-            const interval = setInterval(() => {
-                setShiftTime(prev => Math.min(prev + 1, 600)); // max 10 hours
-            }, 60000); // Update every minute
-            return () => clearInterval(interval);
-        }
-    }, [machineData.machineState]);
-
-    // Helper functions
-    const formatTime = (minutes) => {
-        const hours = Math.floor(minutes / 60);
-        const mins = minutes % 60;
-        return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:00`;
-    };
-
-    const getMachineStatus = () => {
-        if (!machineData.machineState) return 'stopped';
-
-        switch (machineData.machineState.toLowerCase()) {
-            case 'running':
-            case 'operational':
-                return 'running';
-            case 'stopped':
-            case 'offline':
-                return 'stopped';
-            default:
-                return 'paused';
-        }
-    };
-
-    const getProductionStatus = () => {
-        const rate = machineData.bagsPerMinute || 0;
-        if (rate >= 24) return { status: 'Optimal', color: 'text-green-500' };
-        if (rate >= 20) return { status: 'OK', color: 'text-orange-500' };
-        return { status: 'Below Optimal', color: 'text-red-500' };
-    };
-
-    const currentStatus = getMachineStatus();
-    const currentOutput = machineData.bagsPerMinute || 0;
-    const totalBags = machineData.bagCount || 0;
-    const customerName = machineData.customerInfo?.customerName || machineData.customerName || 'INCAS Telemetrix';
-    const userName = machineData.customerInfo?.userName || user?.name || 'User';
-
-    // Loading state
-    if (loading && !machineData.bagCount) {
+    if (loading) {
         return (
             <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-                <div className="bg-white rounded-2xl p-8 text-center shadow-sm">
-                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-                    <p className="text-gray-600">Loading Dashboard...</p>
-                </div>
+                <div className="text-lg text-gray-600">Loading dashboard...</div>
+            </div>
+        );
+    }
+
+    if (error) {
+        return (
+            <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+                <div className="text-lg text-red-600">Error: {error}</div>
             </div>
         );
     }
 
     return (
-        <div className="min-h-screen bg-gray-50 flex" style={{ fontFamily: 'Outfit, sans-serif' }}>
-            {/* Sidebar */}
-            <div className="w-64 bg-white shadow-sm flex flex-col">
-                {/* Logo */}
-                <div className="p-6 border-b">
-                    <div className="flex items-center space-x-3">
-                        <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
-                            <BarChart3 className="w-5 h-5 text-white" />
+        <div className="min-h-screen bg-gray-50">
+            {/* Header */}
+            <header className="bg-white shadow-sm border-b">
+                <div className="px-6 py-4 flex justify-between items-center">
+                    <div>
+                        <h1 className="text-2xl font-semibold text-gray-900" style={{ fontFamily: 'Outfit, sans-serif' }}>
+                            Production Dashboard
+                        </h1>
+                        <p className="text-gray-600">B&C 4080DN - WISE-4050 Telemetry</p>
+                    </div>
+                    <div className="flex items-center gap-4">
+                        <div className="text-right">
+                            <p className="text-sm text-gray-600">Welcome back</p>
+                            <p className="font-medium">{user?.name || 'User'}</p>
                         </div>
-                        <div>
-                            <h1 className="text-xl font-bold text-gray-900">TELEMETRIX</h1>
-                        </div>
+                        <button
+                            onClick={onLogout}
+                            className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                            style={{ fontFamily: 'Outfit, sans-serif' }}
+                        >
+                            Logout
+                        </button>
+                    </div>
+                </div>
+            </header>
+
+            <div className="p-6">
+                {/* Status Indicators */}
+                <div className="flex flex-wrap gap-4 mb-6">
+                    <div className="flex items-center gap-2">
+                        <div className={`w-4 h-4 rounded-full ${telemetryData.machineState === 'RUNNING' ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                        <span className="text-sm font-medium">Machine: {telemetryData.machineState}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <div className={`w-4 h-4 rounded-full`} style={{ backgroundColor: getStatusColor() }}></div>
+                        <span className="text-sm font-medium">Rate: {telemetryData.currentRate} bags/min</span>
                     </div>
                 </div>
 
-                {/* User Info */}
-                <div className="p-4 border-b bg-gray-50">
-                    <div className="text-sm text-gray-600">Welcome back</div>
-                    <div className="font-medium text-gray-900">{userName}</div>
-                    <div className="text-xs text-gray-500">{customerName}</div>
-                </div>
+                {/* Main Content - Responsive Flex Grid */}
+                <div className="flex flex-col lg:flex-row gap-6 mb-6">
+                    {/* Left Card - Production Metrics */}
+                    <div className="bg-white rounded-lg shadow-sm p-6 flex-1" style={{ width: 'auto' }}>
+                        <h2 className="text-xl font-semibold mb-6" style={{ fontFamily: 'Outfit, sans-serif' }}>
+                            Current Shift Progress
+                        </h2>
 
-                {/* Navigation */}
-                <nav className="flex-1 p-4">
-                    <div className="space-y-2">
-                        <a href="#" className="flex items-center space-x-3 px-3 py-2 rounded-lg bg-blue-50 text-blue-600">
-                            <BarChart3 className="w-5 h-5" />
-                            <span className="font-medium">Dashboard</span>
-                        </a>
-                        <a href="#" className="flex items-center space-x-3 px-3 py-2 rounded-lg text-gray-600 hover:bg-gray-50">
-                            <BarChart3 className="w-5 h-5" />
-                            <span>Analytics</span>
-                        </a>
-                        <a href="#" className="flex items-center space-x-3 px-3 py-2 rounded-lg text-gray-600 hover:bg-gray-50">
-                            <FileText className="w-5 h-5" />
-                            <span>Reports</span>
-                        </a>
-                        <a href="#" className="flex items-center space-x-3 px-3 py-2 rounded-lg text-gray-600 hover:bg-gray-50">
-                            <HeadphonesIcon className="w-5 h-5" />
-                            <span>Support</span>
-                        </a>
-                        <a href="#" className="flex items-center space-x-3 px-3 py-2 rounded-lg text-gray-600 hover:bg-gray-50">
-                            <Settings className="w-5 h-5" />
-                            <span>Settings</span>
-                        </a>
-                    </div>
-                </nav>
-
-                {/* Status */}
-                {lastUpdate && (
-                    <div className="p-4 border-t bg-gray-50">
-                        <div className="text-xs text-gray-500 mb-1">Last updated</div>
-                        <div className="text-sm text-gray-900">{lastUpdate}</div>
-                    </div>
-                )}
-
-                {/* Logout */}
-                <div className="p-4">
-                    <button
-                        onClick={onLogout}
-                        className="w-full flex items-center justify-center space-x-2 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
-                    >
-                        <LogOut className="w-4 h-4" />
-                        <span>Log out</span>
-                    </button>
-                </div>
-            </div>
-
-            {/* Main Content */}
-            <div className="flex-1 p-8">
-                <div className="max-w-7xl mx-auto">
-                    {/* Error Display */}
-                    {error && (
-                        <div className="mb-6 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
-                            {error}
-                        </div>
-                    )}
-
-                    <div className="grid grid-cols-3 gap-8">
-
-                        {/* Left Column - Machine Status */}
-                        <div className="col-span-2">
-                            <div className="bg-white rounded-2xl p-8 shadow-sm" style={{ height: '360px' }}>
-                                {/* Header */}
-                                <div className="flex items-center justify-between mb-8">
-                                    <div>
-                                        <h2 className="text-2xl font-bold text-gray-900">
-                                            {machineData.deviceId || 'B&C CV3080P'}
-                                        </h2>
-                                        <p className="text-gray-500">Form Fill Bagging Machine</p>
-                                    </div>
-
-                                    {/* Status Indicators */}
-                                    <div className="flex space-x-4">
-                                        <div className="flex items-center space-x-2">
-                                            <div className={`w-3 h-3 rounded-full ${currentStatus === 'running' ? 'bg-green-500' : 'bg-gray-300'}`}></div>
-                                            <span className="text-sm text-gray-600">Running</span>
-                                        </div>
-                                        <div className="flex items-center space-x-2">
-                                            <div className={`w-3 h-3 rounded-full ${currentStatus === 'paused' ? 'bg-orange-500' : 'bg-gray-300'}`}></div>
-                                            <span className="text-sm text-gray-600">Paused</span>
-                                        </div>
-                                        <div className="flex items-center space-x-2">
-                                            <div className={`w-3 h-3 rounded-full ${currentStatus === 'stopped' ? 'bg-red-500' : 'bg-gray-300'}`}></div>
-                                            <span className="text-sm text-gray-600">Stopped</span>
-                                        </div>
-                                    </div>
+                        <div className="space-y-6">
+                            {/* Total Bags Progress */}
+                            <div>
+                                <div className="flex justify-between items-center mb-2">
+                                    <span className="text-sm font-medium text-gray-700">Total Bags</span>
+                                    <span className="text-sm text-gray-600">
+                                        {telemetryData.bagCount.toLocaleString()} / {TARGET_BAGS_PER_SHIFT.toLocaleString()}
+                                    </span>
                                 </div>
-
-                                {/* Progress Bars */}
-                                <div className="space-y-6">
-                                    {/* Shift Time */}
-                                    <div>
-                                        <div className="flex justify-between items-center mb-2">
-                                            <span className="text-gray-700 font-medium">Total Shift Time: {formatTime(shiftTime)}</span>
-                                            <span className="bg-blue-500 text-white px-3 py-1 rounded-full text-sm font-medium">
-                                                {Math.round((shiftTime / 600) * 100)}%
-                                            </span>
-                                        </div>
-                                        <div className="w-full bg-gray-200 rounded-full h-3">
-                                            <div
-                                                className="bg-blue-500 h-3 rounded-full transition-all duration-500"
-                                                style={{ width: `${(shiftTime / 600) * 100}%` }}
-                                            ></div>
-                                        </div>
-                                    </div>
-
-                                    {/* Total Bags */}
-                                    <div>
-                                        <div className="flex justify-between items-center mb-2">
-                                            <span className="text-gray-700 font-medium">Total Bags: {totalBags.toLocaleString()}</span>
-                                            <span className="bg-blue-500 text-white px-3 py-1 rounded-full text-sm font-medium">
-                                                {Math.round((totalBags / 14400) * 100)}%
-                                            </span>
-                                        </div>
-                                        <div className="w-full bg-gray-200 rounded-full h-3">
-                                            <div
-                                                className="bg-blue-500 h-3 rounded-full transition-all duration-500"
-                                                style={{ width: `${Math.min((totalBags / 14400) * 100, 100)}%` }}
-                                            ></div>
-                                        </div>
-                                    </div>
+                                <div className="w-full bg-gray-200 rounded-full h-3">
+                                    <div
+                                        className="bg-blue-600 h-3 rounded-full transition-all duration-500"
+                                        style={{ width: `${bagsProgress}%` }}
+                                    ></div>
                                 </div>
-
-                                {/* Production Bar */}
-                                <div className="mt-8">
-                                    <div className="flex justify-between items-center mb-2">
-                                        <span className="text-gray-700 font-medium">Production</span>
-                                        <span className={`font-medium ${getProductionStatus().color}`}>
-                                            {getProductionStatus().status}
-                                        </span>
-                                    </div>
-                                    <div className="text-xs text-gray-500 mb-2">
-                                        {currentOutput.toFixed(1)} bags/min (Target: 24 bags/min)
-                                    </div>
-
-                                    {/* Live Production Bar */}
-                                    <div className="h-16 bg-gray-100 rounded-lg overflow-hidden relative">
-                                        <div className="flex h-full items-end space-x-1 px-2">
-                                            {productionHistory.slice(-20).map((value, index) => (
-                                                <div
-                                                    key={index}
-                                                    className={`flex-1 rounded-t transition-all duration-300 ${value >= 24 ? 'bg-green-500' : value >= 20 ? 'bg-orange-500' : 'bg-red-500'
-                                                        }`}
-                                                    style={{ height: `${(value / 30) * 100}%` }}
-                                                ></div>
-                                            ))}
-                                        </div>
-                                    </div>
+                                <div className="text-right text-xs text-gray-500 mt-1">
+                                    {bagsProgress.toFixed(1)}% Complete
                                 </div>
+                            </div>
 
-                                {/* Status Display (Read-only) */}
-                                <div className="flex space-x-4 mt-6">
-                                    <div className={`flex items-center space-x-2 px-4 py-2 rounded-lg ${currentStatus === 'running' ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-700'
-                                        }`}>
-                                        <Play className="w-4 h-4" />
-                                        <span>Running</span>
-                                    </div>
-                                    <div className={`flex items-center space-x-2 px-4 py-2 rounded-lg ${currentStatus === 'paused' ? 'bg-orange-500 text-white' : 'bg-gray-200 text-gray-700'
-                                        }`}>
-                                        <Pause className="w-4 h-4" />
-                                        <span>Paused</span>
-                                    </div>
-                                    <div className={`flex items-center space-x-2 px-4 py-2 rounded-lg ${currentStatus === 'stopped' ? 'bg-red-500 text-white' : 'bg-gray-200 text-gray-700'
-                                        }`}>
-                                        <Square className="w-4 h-4" />
-                                        <span>Stopped</span>
-                                    </div>
+                            {/* Shift Time Progress */}
+                            <div>
+                                <div className="flex justify-between items-center mb-2">
+                                    <span className="text-sm font-medium text-gray-700">Shift Time</span>
+                                    <span className="text-sm text-gray-600">
+                                        {Math.floor(telemetryData.shiftTime / 60)}h {telemetryData.shiftTime % 60}m / 10h
+                                    </span>
+                                </div>
+                                <div className="w-full bg-gray-200 rounded-full h-3">
+                                    <div
+                                        className="bg-green-600 h-3 rounded-full transition-all duration-500"
+                                        style={{ width: `${timeProgress}%` }}
+                                    ></div>
+                                </div>
+                                <div className="text-right text-xs text-gray-500 mt-1">
+                                    {timeProgress.toFixed(1)}% Complete
+                                </div>
+                            </div>
+
+                            {/* Production Rate Gauge */}
+                            <div>
+                                <h3 className="text-lg font-medium mb-4 text-center" style={{ fontFamily: 'Outfit, sans-serif' }}>
+                                    Production Efficiency
+                                </h3>
+                                <div className="flex justify-center">
+                                    <GaugeComponent
+                                        type="semicircle"
+                                        arc={{
+                                            colorArray: ['#EA4228', '#F5CD19', '#5BE12C'],
+                                            padding: 0.02,
+                                            subArcs: [
+                                                {
+                                                    limit: 50,
+                                                    color: '#EA4228',
+                                                    showTick: true,
+                                                    tooltip: { text: 'Below Optimal - Need Attention' }
+                                                },
+                                                {
+                                                    limit: 80,
+                                                    color: '#F5CD19',
+                                                    showTick: true,
+                                                    tooltip: { text: 'Acceptable Rate' }
+                                                },
+                                                {
+                                                    color: '#5BE12C',
+                                                    showTick: true,
+                                                    tooltip: { text: 'Optimal Bag Processing!' }
+                                                }
+                                            ]
+                                        }}
+                                        pointer={{
+                                            type: "blob",
+                                            elastic: true,
+                                            animationDelay: 0,
+                                            animationDuration: 2000,
+                                            color: gaugeValue >= 80 ? '#5BE12C' : '#EA4228'
+                                        }}
+                                        labels={{
+                                            valueLabel: {
+                                                formatTextValue: value => `${value.toFixed(1)}%`,
+                                                style: {
+                                                    fontSize: '24px',
+                                                    fontWeight: 'bold',
+                                                    fontFamily: 'Outfit, sans-serif'
+                                                }
+                                            },
+                                            tickLabels: {
+                                                type: 'outer',
+                                                defaultTickValueConfig: {
+                                                    formatTextValue: value => `${value}%`,
+                                                    style: { fontSize: '12px' }
+                                                }
+                                            }
+                                        }}
+                                        value={gaugeValue}
+                                        minValue={0}
+                                        maxValue={100}
+                                    />
+                                </div>
+                                <div className="text-center mt-2">
+                                    <p className="text-sm text-gray-600">
+                                        Current Rate: <span className="font-medium">{telemetryData.currentRate} bags/min</span>
+                                    </p>
+                                    <p className="text-xs text-gray-500">
+                                        Target: {OPTIMAL_RATE} bags/min
+                                    </p>
                                 </div>
                             </div>
                         </div>
+                    </div>
 
-                        {/* Right Column - Weekly Trends */}
-                        <div className="col-span-1">
-                            <div className="bg-gray-800 text-white rounded-2xl p-6 shadow-sm" style={{ height: '360px' }}>
-                                <div className="flex justify-between items-center mb-6">
-                                    <h3 className="text-lg font-semibold">Weekly Trends</h3>
-                                    <div className="flex space-x-4 text-xs">
-                                        <div className="flex items-center space-x-2">
-                                            <div className="w-3 h-0.5 bg-orange-500 rounded"></div>
-                                            <span className="text-orange-400">Expected Target</span>
-                                        </div>
-                                        <div className="flex items-center space-x-2">
-                                            <div className="w-3 h-0.5 bg-blue-400 rounded"></div>
-                                            <span className="text-blue-400">Actual</span>
-                                        </div>
-                                    </div>
-                                </div>
+                    {/* Right Card - Weekly Trends */}
+                    <div className="bg-white rounded-lg shadow-sm p-6 flex-1" style={{ width: 'auto' }}>
+                        <h2 className="text-xl font-semibold mb-6" style={{ fontFamily: 'Outfit, sans-serif' }}>
+                            Weekly Production Trends
+                        </h2>
 
-                                <div style={{ height: '260px' }}>
-                                    <ResponsiveContainer width="100%" height="100%">
-                                        <LineChart data={historicalData}>
-                                            <XAxis
-                                                dataKey="day"
-                                                axisLine={false}
-                                                tickLine={false}
-                                                tick={{ fontSize: 12, fill: '#9CA3AF' }}
-                                            />
-                                            <YAxis
-                                                axisLine={false}
-                                                tickLine={false}
-                                                tick={{ fontSize: 12, fill: '#9CA3AF' }}
-                                                domain={[0, 'dataMax + 2000']}
-                                                tickFormatter={(value) => `${Math.round(value / 1000)}K`}
-                                            />
-                                            <Line
-                                                type="monotone"
-                                                dataKey="expected"
-                                                stroke="#F59E0B"
-                                                strokeWidth={2}
-                                                strokeDasharray="5 5"
-                                                dot={false}
-                                            />
-                                            <Line
-                                                type="monotone"
-                                                dataKey="actual"
-                                                stroke="#60A5FA"
-                                                strokeWidth={3}
-                                                dot={{ r: 4, fill: '#60A5FA' }}
-                                            />
-                                        </LineChart>
-                                    </ResponsiveContainer>
+                        <div className="h-64 mb-4">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <LineChart data={weeklyData}>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                                    <XAxis
+                                        dataKey="day"
+                                        tick={{ fontSize: 12 }}
+                                        style={{ fontFamily: 'Outfit, sans-serif' }}
+                                    />
+                                    <YAxis
+                                        tick={{ fontSize: 12 }}
+                                        style={{ fontFamily: 'Outfit, sans-serif' }}
+                                    />
+                                    <Tooltip
+                                        contentStyle={{
+                                            backgroundColor: '#f8f9fa',
+                                            border: '1px solid #dee2e6',
+                                            borderRadius: '6px',
+                                            fontFamily: 'Outfit, sans-serif'
+                                        }}
+                                    />
+                                    <Line
+                                        type="monotone"
+                                        dataKey="expected"
+                                        stroke="#6b7280"
+                                        strokeWidth={2}
+                                        strokeDasharray="5 5"
+                                        name="Expected"
+                                    />
+                                    <Line
+                                        type="monotone"
+                                        dataKey="actual"
+                                        stroke="#3b82f6"
+                                        strokeWidth={3}
+                                        name="Actual"
+                                    />
+                                </LineChart>
+                            </ResponsiveContainer>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4 text-sm">
+                            <div>
+                                <p className="text-gray-600">Week Average</p>
+                                <p className="text-lg font-semibold text-blue-600">
+                                    {Math.round(weeklyData.reduce((sum, day) => sum + day.actual, 0) / weeklyData.length).toLocaleString()}
+                                </p>
+                            </div>
+                            <div>
+                                <p className="text-gray-600">Target Achievement</p>
+                                <p className="text-lg font-semibold text-green-600">
+                                    {((weeklyData.reduce((sum, day) => sum + day.actual, 0) / weeklyData.reduce((sum, day) => sum + day.expected, 0)) * 100).toFixed(1)}%
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Bottom Progress Bar - Updated Design */}
+                <div className="bg-white rounded-lg shadow-sm p-6">
+                    <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                        <div className="flex-1 w-full">
+                            <div className="flex justify-between items-center mb-2">
+                                <h3 className="text-lg font-semibold" style={{ fontFamily: 'Outfit, sans-serif' }}>
+                                    Today's Production Status
+                                </h3>
+                                <span className="text-sm text-gray-600">
+                                    {telemetryData.bagCount} / {TARGET_BAGS_PER_SHIFT} bags
+                                </span>
+                            </div>
+                            <div className="w-full bg-gray-200 rounded-full h-4 relative overflow-hidden">
+                                <div
+                                    className="h-4 rounded-full transition-all duration-1000 relative"
+                                    style={{
+                                        width: `${bagsProgress}%`,
+                                        background: bagsProgress >= 80
+                                            ? 'linear-gradient(90deg, #10b981, #059669)'
+                                            : bagsProgress >= 60
+                                                ? 'linear-gradient(90deg, #f59e0b, #d97706)'
+                                                : 'linear-gradient(90deg, #ef4444, #dc2626)'
+                                    }}
+                                >
+                                    <div className="absolute inset-0 bg-white bg-opacity-20 animate-pulse"></div>
                                 </div>
+                            </div>
+                            <div className="flex justify-between text-xs text-gray-500 mt-1">
+                                <span>0</span>
+                                <span className="font-medium">{bagsProgress.toFixed(1)}%</span>
+                                <span>{TARGET_BAGS_PER_SHIFT.toLocaleString()}</span>
+                            </div>
+                        </div>
+
+                        <div className="flex items-center gap-4 text-sm">
+                            <div className="text-center">
+                                <p className="text-gray-600">Machine Status</p>
+                                <p className={`font-semibold ${telemetryData.machineState === 'RUNNING' ? 'text-green-600' : 'text-red-600'
+                                    }`}>
+                                    {telemetryData.machineState}
+                                </p>
+                            </div>
+                            <div className="text-center">
+                                <p className="text-gray-600">Current Rate</p>
+                                <p className="font-semibold" style={{ color: getStatusColor() }}>
+                                    {telemetryData.currentRate} bpm
+                                </p>
                             </div>
                         </div>
                     </div>
