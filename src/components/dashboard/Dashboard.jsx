@@ -46,7 +46,7 @@ const Dashboard = ({ user, token, onLogout }) => {
     useEffect(() => {
         const fetchData = async () => {
             try {
-                const response = await fetch(`/api/GetCurrentStatus`, {
+                const response = await fetch(`https://incas-functions-dev-b8djeyakc7d0hwa3.australiasoutheast-01.azurewebsites.net/api/GetCurrentStatus`, {
                     headers: {
                         'Authorization': `Bearer ${token}`,
                         'Content-Type': 'application/json'
@@ -399,8 +399,8 @@ const Dashboard = ({ user, token, onLogout }) => {
                                 {/* Status Buttons */}
                                 <div className="flex justify-center gap-3 mt-4">
                                     <button className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm ${telemetryData.machineState === 'RUNNING'
-                                            ? 'bg-green-500 text-white'
-                                            : 'bg-gray-200 text-gray-600'
+                                        ? 'bg-green-500 text-white'
+                                        : 'bg-gray-200 text-gray-600'
                                         }`}>
                                         <div className={`w-2 h-2 rounded-full ${telemetryData.machineState === 'RUNNING' ? 'bg-white' : 'bg-gray-500'
                                             }`}></div>
@@ -408,8 +408,8 @@ const Dashboard = ({ user, token, onLogout }) => {
                                     </button>
 
                                     <button className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm ${telemetryData.machineState === 'PAUSED'
-                                            ? 'bg-blue-500 text-white'
-                                            : 'bg-gray-200 text-gray-600'
+                                        ? 'bg-blue-500 text-white'
+                                        : 'bg-gray-200 text-gray-600'
                                         }`}>
                                         <div className={`w-2 h-2 rounded-full ${telemetryData.machineState === 'PAUSED' ? 'bg-white' : 'bg-gray-500'
                                             }`}></div>
