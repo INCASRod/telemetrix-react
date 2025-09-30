@@ -52,7 +52,6 @@ const Dashboard = ({ user, token, onLogout }) => {
                         'Content-Type': 'application/json'
                     }
                 });
-
                 if (!response.ok) {
                     if (response.status === 401) {
                         onLogout();
